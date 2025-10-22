@@ -91,7 +91,6 @@ void free_layer(Layer* layer) {
 }
 
 // CORRECTED Forward pass through a single layer
-// In layers.c - REPLACE the forward_pass function with this:
 Matrix* forward_pass(Layer* layer, const Matrix* input) {
     if (!layer || !input) {
         printf("ERROR: Layer or input is NULL in forward_pass\n");
@@ -285,7 +284,7 @@ Matrix* apply_activation_derivative(const Matrix* input, Activation activation) 
     
     switch (activation) {
         case LINEAR:
-            for (int i = 0; i < input->rows; i++) {
+            for (int i = 0; i// In layers.c - REPLACE the forward_pass function with this: < input->rows; i++) {
                 for (int j = 0; j < input->cols; j++) {
                     derivative->data[i][j] = 1.0;
                 }
@@ -351,14 +350,6 @@ void initialize_weights_xavier(Matrix* weights, int input_size) {
     }
 }
 
-// Add these functions to the end of layers.c
-
-// Replace the load_layer function in layers.c with this:
-
-// Replace the load_layer function in layers.c with this:
-// REPLACE the entire load_layer function with this:
-
-// REPLACE the load_layer function in layers.c with this BULLETPROOF version:
 
 Layer* load_layer(FILE* file) {
     if (!file) {
@@ -501,9 +492,7 @@ Layer* load_layer(FILE* file) {
     printf("Layer loaded successfully: %s\n", name);
     return layer;
 }
-// Replace the save_layer function in layers.c with this:
 
-// REPLACE the save_layer function with this:
 
 void save_layer(Layer* layer, FILE* file) {
     if (!layer || !file) {
