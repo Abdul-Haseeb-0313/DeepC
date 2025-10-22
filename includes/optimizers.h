@@ -19,7 +19,7 @@ typedef struct OptimizerState {
     double beta2;
     double epsilon;
     
-    // Moments storage (simplified - in production you'd want a more dynamic approach)
+
     Matrix*** m_weights;  // Array of matrices for each layer
     Matrix*** v_weights;
     Matrix*** m_biases;
