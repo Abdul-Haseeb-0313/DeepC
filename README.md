@@ -6,8 +6,6 @@ A lightweight deep learning library implemented in pure C.
 
 ```bash
 git clone https://github.com/yourusername/DeepC.git
-cd DeepC
-make && sudo make install
 ```
 ## Usage
 ```c
@@ -28,7 +26,8 @@ int main() {
 ```
 ## Compile with:
 ```bash
-gcc program.c -ldeepc -lm
+gcc program.c src/*  -Iinclude -o program -lm
+./program
 ```
 
 ## Features
