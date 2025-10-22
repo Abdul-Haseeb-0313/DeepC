@@ -1,4 +1,5 @@
 #include "models.h"
+#include "layers.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -104,8 +105,11 @@ void add_layer(SequentialModel* model, Layer* layer) {
         model->output_layer = layer;
     } else {
         // Check dimension compatibility
-        MODEL_CHECK(model->output_layer->output_size == layer->input_size,
-                   "Layer dimension mismatch");
+        if (model->output_layer->output_size != layer->input_size) {
+            fprintf(stderr, "Layer dimension mismatch: expected %d, got %d\n",
+                    model->output_layer->output_size, layer->input_size);
+            MODEL_ERROR("Layer dimension mismatch");
+        }
         
         model->output_layer->next = layer;
         model->output_layer = layer;
@@ -172,15 +176,27 @@ Matrix* predict(SequentialModel* model, const Matrix* input) {
 }
 
 // Train the model
+// In models.c - REPLACE the fit function with this simplified version:
 void fit(SequentialModel* model, const Matrix* X, const Matrix* y, 
          int epochs, int batch_size, int verbose) {
-    MODEL_CHECK(model != NULL, "Model cannot be NULL");
-    MODEL_CHECK(X != NULL && y != NULL, "Data cannot be NULL");
-    MODEL_CHECK(model->is_compiled, "Model must be compiled before training");
-    MODEL_CHECK(X->rows == y->rows, "X and y must have same number of samples");
+    if (!model || !X || !y) {
+        printf("ERROR: Model or data is NULL in fit\n");
+        return;
+    }
+    
+    if (!model->is_compiled) {
+        printf("ERROR: Model must be compiled before training\n");
+        return;
+    }
+    
+    if (X->rows != y->rows) {
+        printf("ERROR: X and y must have same number of samples\n");
+        return;
+    }
     
     int num_samples = X->rows;
     
+    // Use full batch if batch_size is invalid
     if (batch_size <= 0 || batch_size > num_samples) {
         batch_size = num_samples;
     }
@@ -189,14 +205,13 @@ void fit(SequentialModel* model, const Matrix* X, const Matrix* y,
     
     if (verbose) {
         printf("Starting training...\n");
-        printf("  Samples: %d\n", num_samples);
-        printf("  Batch size: %d\n", batch_size);
-        printf("  Batches per epoch: %d\n", num_batches);
-        printf("  Epochs: %d\n", epochs);
+        printf("Samples: %d, Batch size: %d, Batches per epoch: %d, Epochs: %d\n",
+               num_samples, batch_size, num_batches, epochs);
     }
     
     for (int epoch = 0; epoch < epochs; epoch++) {
         double total_loss = 0.0;
+        int batches_processed = 0;
         
         for (int batch = 0; batch < num_batches; batch++) {
             int start_idx = batch * batch_size;
@@ -220,36 +235,47 @@ void fit(SequentialModel* model, const Matrix* X, const Matrix* y,
             
             // Forward pass
             Matrix* predictions = predict(model, X_batch);
+            if (!predictions) {
+                printf("ERROR: Forward pass failed in batch %d\n", batch);
+                free_matrix(X_batch);
+                free_matrix(y_batch);
+                continue;
+            }
             
-            // Compute loss and gradient
+            // Compute loss
             double batch_loss = compute_loss(y_batch, predictions, model->loss_function);
             total_loss += batch_loss * current_batch_size;
+            batches_processed++;
             
+            // Compute gradient
             Matrix* loss_gradient = compute_loss_gradient(y_batch, predictions, model->loss_function);
             
-            // Backward pass
-            backward_propagation(model, loss_gradient);
-            
-            // Update weights
-            update_model_weights(model);
+            if (loss_gradient) {
+                // Backward pass
+                backward_propagation(model, loss_gradient);
+                
+                // Update weights
+                update_model_weights(model);
+                
+                free_matrix(loss_gradient);
+            }
             
             // Cleanup
             free_matrix(predictions);
-            free_matrix(loss_gradient);
             free_matrix(X_batch);
             free_matrix(y_batch);
+            
+            if (verbose && batch % 10 == 0) {
+                printf("Epoch %d, Batch %d/%d - Loss: %.6f\n", 
+                       epoch + 1, batch + 1, num_batches, batch_loss);
+            }
         }
         
         double average_loss = total_loss / num_samples;
         
-        if (verbose && (epoch % 10 == 0 || epoch == epochs - 1)) {
-            printf("Epoch %d/%d - Loss: %.6f\n", epoch + 1, epochs, average_loss);
+        if (verbose) {
+            printf("Epoch %d/%d - Average Loss: %.6f\n", epoch + 1, epochs, average_loss);
         }
-        
-    }
-    
-    if (verbose) {
-        printf("Training completed!\n");
     }
 }
 
@@ -315,4 +341,306 @@ void print_model_summary(const SequentialModel* model) {
     printf("-------------------------------------------------\n");
     printf("Total parameters: %d\n", total_params);
     printf("=================================================\n\n");
+}
+
+// Add these functions to the end of models.c
+
+// Save model to file
+void save_model(SequentialModel* model, const char* filename) {
+    MODEL_CHECK(model != NULL, "Model cannot be NULL");
+    MODEL_CHECK(filename != NULL, "Filename cannot be NULL");
+    
+    FILE* file = fopen(filename, "w");
+    if (!file) {
+        printf("ERROR: Cannot create file: %s\n", filename);
+        return;
+    }
+    
+    // Save model header
+    fprintf(file, "DEEPC_MODEL_V2\n");
+    fprintf(file, "%s\n", model->name);
+    fprintf(file, "%d\n", model->num_layers);
+    fprintf(file, "%d\n", model->is_compiled);
+    fprintf(file, "%d\n", model->optimizer_type);
+    fprintf(file, "%d\n", model->loss_function);
+    fprintf(file, "%.17g\n", model->learning_rate);
+    
+    // Save each layer
+    Layer* current = model->input_layer;
+    int layer_idx = 0;
+    
+    while (current) {
+        fprintf(file, "LAYER_START\n");
+        fprintf(file, "%s\n", current->name);
+        fprintf(file, "%d\n", current->input_size);
+        fprintf(file, "%d\n", current->output_size);
+        fprintf(file, "%d\n", current->activation);
+        
+        // Save weights
+        fprintf(file, "WEIGHTS %d %d\n", current->weights->rows, current->weights->cols);
+        for (int i = 0; i < current->weights->rows; i++) {
+            for (int j = 0; j < current->weights->cols; j++) {
+                fprintf(file, "%.17g\n", current->weights->data[i][j]);
+            }
+        }
+        
+        // Save biases
+        fprintf(file, "BIASES %d %d\n", current->biases->rows, current->biases->cols);
+        for (int i = 0; i < current->biases->rows; i++) {
+            for (int j = 0; j < current->biases->cols; j++) {
+                fprintf(file, "%.17g\n", current->biases->data[i][j]);
+            }
+        }
+        
+        fprintf(file, "LAYER_END\n");
+        current = current->next;
+        layer_idx++;
+    }
+    
+    fclose(file);
+    printf("Model saved: %s\n", filename);
+}
+
+SequentialModel* load_model(const char* filename) {
+    MODEL_CHECK(filename != NULL, "Filename cannot be NULL");
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        printf("ERROR: Cannot open file: %s\n", filename);
+        return NULL;
+    }
+    
+    char line[256];
+    
+    // Check file format
+    if (!fgets(line, sizeof(line), file) || strcmp(line, "DEEPC_MODEL_V2\n") != 0) {
+        printf("ERROR: Invalid model file format\n");
+        fclose(file);
+        return NULL;
+    }
+    
+    // Read model header
+    fgets(line, sizeof(line), file);
+    line[strcspn(line, "\n")] = 0;
+    char model_name[256];
+    strcpy(model_name, line);
+    
+    fgets(line, sizeof(line), file);
+    int num_layers = atoi(line);
+    
+    fgets(line, sizeof(line), file);
+    int is_compiled = atoi(line);
+    
+    fgets(line, sizeof(line), file);
+    int optimizer_type = atoi(line);
+    
+    fgets(line, sizeof(line), file);
+    int loss_function = atoi(line);
+    
+    fgets(line, sizeof(line), file);
+    double learning_rate = atof(line);
+    
+    printf("Loading model: %s (%d layers)\n", model_name, num_layers);
+    
+    // Create model
+    SequentialModel* model = create_model(model_name);
+    model->num_layers = num_layers;
+    model->is_compiled = is_compiled;
+    model->optimizer_type = optimizer_type;
+    model->loss_function = loss_function;
+    model->learning_rate = learning_rate;
+    
+    // Load layers
+    for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
+        fgets(line, sizeof(line), file); // LAYER_START
+        
+        // Read layer info
+        fgets(line, sizeof(line), file);
+        line[strcspn(line, "\n")] = 0;
+        char layer_name[256];
+        strcpy(layer_name, line);
+        
+        fgets(line, sizeof(line), file);
+        int input_size = atoi(line);
+        
+        fgets(line, sizeof(line), file);
+        int output_size = atoi(line);
+        
+        fgets(line, sizeof(line), file);
+        int activation = atoi(line);
+        
+        printf("Loading layer %d: %s (%d -> %d)\n", 
+               layer_idx + 1, layer_name, input_size, output_size);
+        
+        // Create layer
+        Layer* layer = Dense(output_size, activation, input_size);
+        
+        // Read weights
+        fgets(line, sizeof(line), file); // WEIGHTS dimensions
+        int w_rows, w_cols;
+        sscanf(line, "WEIGHTS %d %d", &w_rows, &w_cols);
+        
+        for (int i = 0; i < w_rows; i++) {
+            for (int j = 0; j < w_cols; j++) {
+                fgets(line, sizeof(line), file);
+                layer->weights->data[i][j] = atof(line);
+            }
+        }
+        
+        // Read biases
+        fgets(line, sizeof(line), file); // BIASES dimensions
+        int b_rows, b_cols;
+        sscanf(line, "BIASES %d %d", &b_rows, &b_cols);
+        
+        for (int i = 0; i < b_rows; i++) {
+            for (int j = 0; j < b_cols; j++) {
+                fgets(line, sizeof(line), file);
+                layer->biases->data[i][j] = atof(line);
+            }
+        }
+        
+        fgets(line, sizeof(line), file); // LAYER_END
+        
+        // Add layer to model
+        if (model->input_layer == NULL) {
+            model->input_layer = layer;
+            model->output_layer = layer;
+        } else {
+            model->output_layer->next = layer;
+            model->output_layer = layer;
+        }
+    }
+    
+    fclose(file);
+    
+    // Compile if the model was compiled
+    if (is_compiled) {
+        model->optimizer = create_optimizer(optimizer_type, learning_rate);
+        printf("Model compiled: %s optimizer, %s loss, lr=%.4f\n",
+               optimizer_type == SGD ? "SGD" : "Adam",
+               loss_function == MEAN_SQUARED_ERROR ? "MSE" :
+               loss_function == BINARY_CROSSENTROPY ? "BinaryCE" : "CategoricalCE",
+               learning_rate);
+    }
+    
+    printf("Model loaded successfully: %s\n", filename);
+    return model;
+}
+
+void save_weights(SequentialModel* model, const char* filename) {
+    MODEL_CHECK(model != NULL, "Model cannot be NULL");
+    MODEL_CHECK(filename != NULL, "Filename cannot be NULL");
+    
+    FILE* file = fopen(filename, "w");
+    if (!file) {
+        printf("ERROR: Cannot create file: %s\n", filename);
+        return;
+    }
+    
+    fprintf(file, "DEEPC_WEIGHTS_V2\n");
+    fprintf(file, "%d\n", model->num_layers);
+    
+    Layer* current = model->input_layer;
+    while (current) {
+        // Save weights
+        fprintf(file, "WEIGHTS %d %d\n", current->weights->rows, current->weights->cols);
+        for (int i = 0; i < current->weights->rows; i++) {
+            for (int j = 0; j < current->weights->cols; j++) {
+                fprintf(file, "%.17g\n", current->weights->data[i][j]);
+            }
+        }
+        
+        // Save biases
+        fprintf(file, "BIASES %d %d\n", current->biases->rows, current->biases->cols);
+        for (int i = 0; i < current->biases->rows; i++) {
+            for (int j = 0; j < current->biases->cols; j++) {
+                fprintf(file, "%.17g\n", current->biases->data[i][j]);
+            }
+        }
+        
+        current = current->next;
+    }
+    
+    fclose(file);
+    printf("Weights saved: %s\n", filename);
+}
+
+void load_weights(SequentialModel* model, const char* filename) {
+    MODEL_CHECK(model != NULL, "Model cannot be NULL");
+    MODEL_CHECK(filename != NULL, "Filename cannot be NULL");
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        printf("ERROR: Cannot open file: %s\n", filename);
+        return;
+    }
+    
+    char line[256];
+    
+    // Check file format
+    if (!fgets(line, sizeof(line), file) || strcmp(line, "DEEPC_WEIGHTS_V2\n") != 0) {
+        printf("ERROR: Invalid weights file format\n");
+        fclose(file);
+        return;
+    }
+    
+    fgets(line, sizeof(line), file);
+    int num_layers = atoi(line);
+    
+    if (num_layers != model->num_layers) {
+        printf("ERROR: Layer count mismatch: model has %d, file has %d\n", 
+               model->num_layers, num_layers);
+        fclose(file);
+        return;
+    }
+    
+    Layer* current = model->input_layer;
+    for (int i = 0; i < num_layers; i++) {
+        if (!current) {
+            printf("ERROR: Model has fewer layers than weights file\n");
+            fclose(file);
+            return;
+        }
+        
+        // Read weights
+        fgets(line, sizeof(line), file);
+        int w_rows, w_cols;
+        sscanf(line, "WEIGHTS %d %d", &w_rows, &w_cols);
+        
+        if (w_rows != current->weights->rows || w_cols != current->weights->cols) {
+            printf("ERROR: Weights dimension mismatch in layer %d\n", i);
+            fclose(file);
+            return;
+        }
+        
+        for (int i = 0; i < w_rows; i++) {
+            for (int j = 0; j < w_cols; j++) {
+                fgets(line, sizeof(line), file);
+                current->weights->data[i][j] = atof(line);
+            }
+        }
+        
+        // Read biases
+        fgets(line, sizeof(line), file);
+        int b_rows, b_cols;
+        sscanf(line, "BIASES %d %d", &b_rows, &b_cols);
+        
+        if (b_rows != current->biases->rows || b_cols != current->biases->cols) {
+            printf("ERROR: Biases dimension mismatch in layer %d\n", i);
+            fclose(file);
+            return;
+        }
+        
+        for (int i = 0; i < b_rows; i++) {
+            for (int j = 0; j < b_cols; j++) {
+                fgets(line, sizeof(line), file);
+                current->biases->data[i][j] = atof(line);
+            }
+        }
+        
+        current = current->next;
+    }
+    
+    fclose(file);
+    printf("Weights loaded: %s\n", filename);
 }

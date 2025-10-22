@@ -5,6 +5,8 @@
 #include <math.h>
 #include <time.h>
 
+
+
 // Error handling
 #define LAYER_ERROR(msg) do { \
     fprintf(stderr, "\n*** LAYER ERROR ***\n"); \
@@ -29,18 +31,21 @@ Layer* Dense(int units, Activation activation, int input_dim) {
     Layer* layer = (Layer*)malloc(sizeof(Layer));
     LAYER_CHECK(layer != NULL, "Memory allocation failed for layer");
     
-    layer->name = "dense";
+    layer->name = malloc(6);
+    if (layer->name) {
+        strcpy(layer->name, "dense");
+    }
+    
     layer->activation = activation;
     layer->input_size = input_dim;
     layer->output_size = units;
     layer->next = NULL;
     
     // Initialize weights and biases with correct dimensions
-    // weights: [output_size, input_size] - so we can do: output = input * weights^T + bias
     layer->weights = create_matrix(units, input_dim);
-    layer->biases = create_matrix(units, 1);
+    layer->biases = create_matrix(units, 1);  // FIXED: units x 1
     layer->dweights = create_matrix(units, input_dim);
-    layer->dbiases = create_matrix(units, 1);
+    layer->dbiases = create_matrix(units, 1);  // FIXED: units x 1
     
     // Initialize cache matrices
     layer->input = NULL;
@@ -65,10 +70,14 @@ Layer* Dense(int units, Activation activation, int input_dim) {
     
     return layer;
 }
-
 // Free layer memory
 void free_layer(Layer* layer) {
     if (!layer) return;
+
+    // Free the name if it exists
+    if (layer->name) {
+        free(layer->name);
+    }
     
     if (layer->weights) free_matrix(layer->weights);
     if (layer->biases) free_matrix(layer->biases);
@@ -82,31 +91,44 @@ void free_layer(Layer* layer) {
 }
 
 // CORRECTED Forward pass through a single layer
+// In layers.c - REPLACE the forward_pass function with this:
 Matrix* forward_pass(Layer* layer, const Matrix* input) {
-    LAYER_CHECK(layer != NULL, "Layer cannot be NULL");
-    LAYER_CHECK(input != NULL, "Input matrix cannot be NULL");
-    LAYER_CHECK(input->cols == layer->input_size, 
-                "Input dimension mismatch: expected %d, got %d");
+    if (!layer || !input) {
+        printf("ERROR: Layer or input is NULL in forward_pass\n");
+        return NULL;
+    }
+    
+    if (input->cols != layer->input_size) {
+        printf("ERROR: Input dimension mismatch in forward_pass: ");
+        printf("expected %d, got %d\n", layer->input_size, input->cols);
+        return NULL;
+    }
     
     // Store input for backpropagation
     if (layer->input) free_matrix(layer->input);
     layer->input = copy_matrix(input);
     
-    // Calculate z = input * weights^T + bias
-    // input: [batch_size, input_size]
+    // z = input * weights^T + bias
+    // input: [batch_size, input_size] 
     // weights: [output_size, input_size]
-    // weights_transpose: [input_size, output_size]
-    // z = input * weights_transpose: [batch_size, output_size]
+    // weights^T: [input_size, output_size]
+    // z: [batch_size, output_size]
     
     Matrix* weights_transpose = transpose(layer->weights);
-    LAYER_CHECK(weights_transpose != NULL, "Failed to transpose weights");
+    if (!weights_transpose) {
+        printf("ERROR: Failed to transpose weights\n");
+        return NULL;
+    }
     
     Matrix* z = dot(input, weights_transpose);
     free_matrix(weights_transpose);
-    LAYER_CHECK(z != NULL, "Dot product failed in forward pass");
     
-    // Add bias to each sample in the batch
-    // z: [batch_size, output_size], biases: [output_size, 1]
+    if (!z) {
+        printf("ERROR: Dot product failed in forward_pass\n");
+        return NULL;
+    }
+    
+    // Add bias (broadcast to each sample in batch)
     for (int i = 0; i < z->rows; i++) {
         for (int j = 0; j < z->cols; j++) {
             z->data[i][j] += layer->biases->data[j][0];
@@ -120,6 +142,11 @@ Matrix* forward_pass(Layer* layer, const Matrix* input) {
     // Apply activation function
     Matrix* output = apply_activation(z, layer->activation);
     free_matrix(z);
+    
+    if (!output) {
+        printf("ERROR: Activation function failed\n");
+        return NULL;
+    }
     
     // Store output
     if (layer->output) free_matrix(layer->output);
@@ -159,6 +186,7 @@ Matrix* backward_pass(Layer* layer, const Matrix* gradient) {
             layer->dweights->data[i][j] = sum / delta->rows;
         }
     }
+    free_matrix(input_transpose);
     
     // 4. Compute bias gradients: dL/db = mean(delta, axis=0)
     for (int i = 0; i < layer->dbiases->rows; i++) {
@@ -175,12 +203,11 @@ Matrix* backward_pass(Layer* layer, const Matrix* gradient) {
     // Cleanup
     free_matrix(activation_deriv);
     free_matrix(delta);
-    free_matrix(input_transpose);
     
     return prev_gradient;
 }
 
-// Apply activation function to matrix (unchanged, but included for completeness)
+// Apply activation function to matrix
 Matrix* apply_activation(const Matrix* input, Activation activation) {
     LAYER_CHECK(input != NULL, "Input matrix cannot be NULL");
     
@@ -324,16 +351,186 @@ void initialize_weights_xavier(Matrix* weights, int input_size) {
     }
 }
 
-// Helper function to check matrix for NaN values
-int matrix_has_nan(const Matrix* m) {
-    if (!m) return 0;
+// Add these functions to the end of layers.c
+
+// Replace the load_layer function in layers.c with this:
+
+// Replace the load_layer function in layers.c with this:
+// REPLACE the entire load_layer function with this:
+
+// REPLACE the load_layer function in layers.c with this BULLETPROOF version:
+
+Layer* load_layer(FILE* file) {
+    if (!file) {
+        printf("ERROR: File is NULL in load_layer\n");
+        return NULL;
+    }
     
-    for (int i = 0; i < m->rows; i++) {
-        for (int j = 0; j < m->cols; j++) {
-            if (isnan(m->data[i][j])) {
-                return 1;
+    char line[256];
+    
+    // Read and validate layer type
+    if (!fgets(line, sizeof(line), file)) {
+        printf("ERROR: Failed to read layer type\n");
+        return NULL;
+    }
+    line[strcspn(line, "\n")] = 0;
+    
+    if (strcmp(line, "DENSE") != 0) {
+        printf("ERROR: Unsupported layer type: '%s'\n", line);
+        return NULL;
+    }
+    
+    // Read layer name
+    if (!fgets(line, sizeof(line), file)) {
+        printf("ERROR: Failed to read layer name\n");
+        return NULL;
+    }
+    line[strcspn(line, "\n")] = 0;
+    char name[256];
+    strcpy(name, line);
+    
+    // Read layer parameters
+    int input_size, output_size, activation;
+    
+    if (!fgets(line, sizeof(line), file) || sscanf(line, "%d", &input_size) != 1) {
+        printf("ERROR: Failed to read input_size\n");
+        return NULL;
+    }
+    
+    if (!fgets(line, sizeof(line), file) || sscanf(line, "%d", &output_size) != 1) {
+        printf("ERROR: Failed to read output_size\n");
+        return NULL;
+    }
+    
+    if (!fgets(line, sizeof(line), file) || sscanf(line, "%d", &activation) != 1) {
+        printf("ERROR: Failed to read activation\n");
+        return NULL;
+    }
+    
+    printf("Loading layer: %s, input_size=%d, output_size=%d, activation=%d\n", 
+           name, input_size, output_size, activation);
+    
+    // Create layer
+    Layer* layer = Dense(output_size, activation, input_size);
+    if (!layer) {
+        printf("ERROR: Failed to create layer\n");
+        return NULL;
+    }
+    
+    // Set the saved name
+    if (layer->name) {
+        free(layer->name);
+    }
+    layer->name = malloc(strlen(name) + 1);
+    if (layer->name) {
+        strcpy(layer->name, name);
+    }
+    
+    // Read weights dimensions
+    if (!fgets(line, sizeof(line), file)) {
+        printf("ERROR: Failed to read weights dimensions\n");
+        free_layer(layer);
+        return NULL;
+    }
+    
+    int weights_rows, weights_cols;
+    if (sscanf(line, "%d %d", &weights_rows, &weights_cols) != 2) {
+        printf("ERROR: Failed to parse weights dimensions: %s\n", line);
+        free_layer(layer);
+        return NULL;
+    }
+    
+    printf("Loading weights: %d x %d\n", weights_rows, weights_cols);
+    
+    // Verify weights dimensions
+    if (weights_rows != layer->weights->rows || weights_cols != layer->weights->cols) {
+        printf("ERROR: Weights dimension mismatch: expected %dx%d, got %dx%d\n",
+               layer->weights->rows, layer->weights->cols, weights_rows, weights_cols);
+        free_layer(layer);
+        return NULL;
+    }
+    
+    // READ WEIGHTS - ONE PER LINE
+    for (int i = 0; i < weights_rows; i++) {
+        for (int j = 0; j < weights_cols; j++) {
+            if (!fgets(line, sizeof(line), file)) {
+                printf("ERROR: Failed to read weight at (%d, %d)\n", i, j);
+                free_layer(layer);
+                return NULL;
             }
+            layer->weights->data[i][j] = atof(line);
         }
     }
-    return 0;
+    
+    // Read biases dimensions
+    if (!fgets(line, sizeof(line), file)) {
+        printf("ERROR: Failed to read biases dimensions\n");
+        free_layer(layer);
+        return NULL;
+    }
+    
+    int biases_rows, biases_cols;
+    if (sscanf(line, "%d %d", &biases_rows, &biases_cols) != 2) {
+        printf("ERROR: Failed to parse biases dimensions: '%s'\n", line);
+        free_layer(layer);
+        return NULL;
+    }
+    
+    printf("Loading biases: %d x %d\n", biases_rows, biases_cols);
+    
+    // Verify biases dimensions
+    if (biases_rows != layer->biases->rows || biases_cols != layer->biases->cols) {
+        printf("ERROR: Biases dimension mismatch: expected %dx%d, got %dx%d\n",
+               layer->biases->rows, layer->biases->cols, biases_rows, biases_cols);
+        free_layer(layer);
+        return NULL;
+    }
+    
+    // READ BIASES - ONE PER LINE
+    for (int i = 0; i < biases_rows; i++) {
+        for (int j = 0; j < biases_cols; j++) {
+            if (!fgets(line, sizeof(line), file)) {
+                printf("ERROR: Failed to read bias at (%d, %d)\n", i, j);
+                free_layer(layer);
+                return NULL;
+            }
+            layer->biases->data[i][j] = atof(line);
+        }
+    }
+    
+    printf("Layer loaded successfully: %s\n", name);
+    return layer;
+}
+// Replace the save_layer function in layers.c with this:
+
+// REPLACE the save_layer function with this:
+
+void save_layer(Layer* layer, FILE* file) {
+    if (!layer || !file) {
+        printf("ERROR: Layer or file is NULL in save_layer\n");
+        return;
+    }
+    
+    // Save layer metadata
+    fprintf(file, "DENSE\n");
+    fprintf(file, "%s\n", layer->name);
+    fprintf(file, "%d\n", layer->input_size);
+    fprintf(file, "%d\n", layer->output_size);
+    fprintf(file, "%d\n", layer->activation);
+    
+    // Save weights - ONE NUMBER PER LINE for reliable reading!
+    fprintf(file, "%d %d\n", layer->weights->rows, layer->weights->cols);
+    for (int i = 0; i < layer->weights->rows; i++) {
+        for (int j = 0; j < layer->weights->cols; j++) {
+            fprintf(file, "%.17g\n", layer->weights->data[i][j]);
+        }
+    }
+    
+    // Save biases - ONE NUMBER PER LINE for reliable reading!
+    fprintf(file, "%d %d\n", layer->biases->rows, layer->biases->cols);
+    for (int i = 0; i < layer->biases->rows; i++) {
+        for (int j = 0; j < layer->biases->cols; j++) {
+            fprintf(file, "%.17g\n", layer->biases->data[i][j]);
+        }
+    }
 }

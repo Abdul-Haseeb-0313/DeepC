@@ -2,6 +2,7 @@
 
 // Stack trace function
 void print_stack_trace(void) {
+#ifdef EXECINFO_AVAILABLE
     void *buffer[100];
     char **strings;
     int nptrs;
@@ -15,12 +16,13 @@ void print_stack_trace(void) {
         return;
     }
     
-    for (int i = 1; i < nptrs; i++) {  // Start from 1 to skip this function
+    for (int i = 1; i < nptrs; i++) {
         printf("#%d %s\n", i-1, strings[i]);
     }
     
     free(strings);
     printf("===================\n\n");
+#endif
 }
 
 // Error handling macro with stack trace
@@ -66,6 +68,11 @@ Matrix* create_matrix(int rows, int cols) {
             free(m);
             MATRIX_ERROR("Memory allocation failed for matrix row");
         }
+        
+        // Initialize to zero
+        for (int j = 0; j < cols; j++) {
+            m->data[i][j] = 0.0;
+        }
     }
     
     return m;
@@ -103,15 +110,7 @@ Matrix* copy_matrix(const Matrix *src) {
 
 // Create matrix filled with zeros
 Matrix* zeros(int rows, int cols) {
-    Matrix *m = create_matrix(rows, cols);
-    
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            m->data[i][j] = 0.0;
-        }
-    }
-    
-    return m;
+    return create_matrix(rows, cols); // Already initialized to zeros
 }
 
 // Create matrix filled with ones
@@ -154,7 +153,11 @@ void print_matrix(const Matrix *m) {
     printf("Matrix (%d x %d):\n", m->rows, m->cols);
     for (int i = 0; i < m->rows; i++) {
         for (int j = 0; j < m->cols; j++) {
-            printf("%8.4f ", m->data[i][j]);
+            if (isnan(m->data[i][j])) {
+                printf("     NaN ");
+            } else {
+                printf("%8.4f ", m->data[i][j]);
+            }
         }
         printf("\n");
     }
@@ -266,24 +269,41 @@ Matrix* multiply(const Matrix *a, const Matrix *b) {
     return result;
 }
 
-// In matrix.c, let's add some debug prints to the dot product function:
-
+// In matrix.c - REPLACE the dot product function with this:
 Matrix* dot(const Matrix *a, const Matrix *b) {
-    if (!a || !b || a->cols != b->rows) {
-        printf("Error: Matrix dimensions incompatible for dot product\n");
-        printf("Matrix A: %d x %d, Matrix B: %d x %d\n", a->rows, a->cols, b->rows, b->cols);
-        MATRIX_ERROR("Matrix dimensions incompatible for dot product");
+    if (!a || !b) {
+        printf("ERROR: One or both matrices are NULL in dot product\n");
+        return NULL;
+    }
+    
+    if (a->cols != b->rows) {
+        printf("ERROR: Matrix dimension mismatch in dot product: ");
+        printf("A(%d,%d) * B(%d,%d) - A cols (%d) != B rows (%d)\n", 
+               a->rows, a->cols, b->rows, b->cols, a->cols, b->rows);
+        return NULL;
     }
     
     Matrix *result = create_matrix(a->rows, b->cols);
-    if (!result) return NULL;
+    if (!result) {
+        printf("ERROR: Failed to create result matrix in dot product\n");
+        return NULL;
+    }
     
+    // Initialize to zero
+    for (int i = 0; i < result->rows; i++) {
+        for (int j = 0; j < result->cols; j++) {
+            result->data[i][j] = 0.0;
+        }
+    }
+    
+    // Perform matrix multiplication
     for (int i = 0; i < a->rows; i++) {
         for (int j = 0; j < b->cols; j++) {
-            result->data[i][j] = 0.0;
+            double sum = 0.0;
             for (int k = 0; k < a->cols; k++) {
-                result->data[i][j] += a->data[i][k] * b->data[k][j];
+                sum += a->data[i][k] * b->data[k][j];
             }
+            result->data[i][j] = sum;
         }
     }
     
@@ -382,4 +402,99 @@ double relu(double x) {
 
 double tanh_func(double x) {
     return tanh(x);
+}
+
+// Helper function to check matrix for NaN values
+int matrix_has_nan(const Matrix* m) {
+    if (!m) return 0;
+    
+    for (int i = 0; i < m->rows; i++) {
+        for (int j = 0; j < m->cols; j++) {
+            if (isnan(m->data[i][j])) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Add these functions to matrix.c
+
+// Extract features from dataset (exclude label column)
+Matrix* get_features(const Matrix* data_with_labels, int label_column) {
+    MATRIX_CHECK(data_with_labels != NULL, "Data matrix cannot be NULL");
+    MATRIX_CHECK(label_column >= 0 && label_column < data_with_labels->cols, 
+                "Label column out of bounds");
+    
+    int num_samples = data_with_labels->rows;
+    int num_features = data_with_labels->cols - 1;
+    
+    Matrix* features = create_matrix(num_samples, num_features);
+    
+    for (int i = 0; i < num_samples; i++) {
+        int feature_idx = 0;
+        for (int j = 0; j < data_with_labels->cols; j++) {
+            if (j != label_column) {
+                features->data[i][feature_idx] = data_with_labels->data[i][j];
+                feature_idx++;
+            }
+        }
+    }
+    
+    return features;
+}
+
+// Extract labels from dataset
+Matrix* get_labels(const Matrix* data_with_labels, int label_column) {
+    MATRIX_CHECK(data_with_labels != NULL, "Data matrix cannot be NULL");
+    MATRIX_CHECK(label_column >= 0 && label_column < data_with_labels->cols, 
+                "Label column out of bounds");
+    
+    int num_samples = data_with_labels->rows;
+    Matrix* labels = create_matrix(num_samples, 1);
+    
+    for (int i = 0; i < num_samples; i++) {
+        labels->data[i][0] = data_with_labels->data[i][label_column];
+    }
+    
+    return labels;
+}
+
+// Print class distribution
+void print_class_distribution(const Matrix* labels) {
+    MATRIX_CHECK(labels != NULL, "Labels matrix cannot be NULL");
+    MATRIX_CHECK(labels->cols == 1, "Labels must be a single column");
+    
+    int num_samples = labels->rows;
+    
+    // Count classes (assuming classes are 0,1,2,...)
+    int max_class = 0;
+    for (int i = 0; i < num_samples; i++) {
+        int current_class = (int)labels->data[i][0];
+        if (current_class > max_class) {
+            max_class = current_class;
+        }
+    }
+    
+    int num_classes = max_class + 1;
+    int* class_counts = (int*)calloc(num_classes, sizeof(int));
+    
+    // Count each class
+    for (int i = 0; i < num_samples; i++) {
+        int class_label = (int)labels->data[i][0];
+        if (class_label >= 0 && class_label < num_classes) {
+            class_counts[class_label]++;
+        }
+    }
+    
+    printf("Class Distribution:\n");
+    printf("Class\tCount\tPercentage\n");
+    printf("----------------------------\n");
+    
+    for (int i = 0; i < num_classes; i++) {
+        double percentage = (double)class_counts[i] / num_samples * 100.0;
+        printf("%d\t%d\t%.1f%%\n", i, class_counts[i], percentage);
+    }
+    
+    free(class_counts);
 }

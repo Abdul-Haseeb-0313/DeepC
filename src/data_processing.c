@@ -304,3 +304,195 @@ void train_test_split(const Matrix *X, const Matrix *y, double test_size,
     
     free(indices);
 }
+
+Matrix* split_features_labels(const Matrix *data, int label_column) {
+    CSV_CHECK(data != NULL, "Data matrix cannot be NULL");
+    CSV_CHECK(label_column >= 0 && label_column < data->cols, "Label column out of bounds");
+    
+    int num_samples = data->rows;
+    int num_features = data->cols - 1;
+    
+    // Create result matrix: [X, y] combined
+    Matrix* result = create_matrix(num_samples, num_features + 1);
+    
+    for (int i = 0; i < num_samples; i++) {
+        int feature_idx = 0;
+        for (int j = 0; j < data->cols; j++) {
+            if (j == label_column) {
+                // Put label in the last column
+                result->data[i][num_features] = data->data[i][j];
+            } else {
+                // Put feature in current position
+                result->data[i][feature_idx] = data->data[i][j];
+                feature_idx++;
+            }
+        }
+    }
+    
+    return result;
+}
+
+// One-hot encode labels
+Matrix* one_hot_encode_labels(const Matrix *labels, int num_classes) {
+    CSV_CHECK(labels != NULL, "Labels matrix cannot be NULL");
+    CSV_CHECK(num_classes > 0, "Number of classes must be positive");
+    CSV_CHECK(labels->cols == 1, "Labels must be a single column");
+    
+    int num_samples = labels->rows;
+    Matrix* one_hot = create_matrix(num_samples, num_classes);
+    
+    for (int i = 0; i < num_samples; i++) {
+        int label = (int)labels->data[i][0];
+        
+        // Validate label
+        if (label < 0 || label >= num_classes) {
+            printf("WARNING: Label %d out of range [0, %d] at sample %d\n", 
+                   label, num_classes - 1, i);
+            // Set to uniform distribution for invalid labels
+            for (int j = 0; j < num_classes; j++) {
+                one_hot->data[i][j] = 1.0 / num_classes;
+            }
+        } else {
+            // Set one-hot encoding
+            for (int j = 0; j < num_classes; j++) {
+                one_hot->data[i][j] = (j == label) ? 1.0 : 0.0;
+            }
+        }
+    }
+    
+    return one_hot;
+}
+
+// Convert one-hot encoded labels back to class indices
+Matrix* one_hot_decode_labels(const Matrix *one_hot) {
+    CSV_CHECK(one_hot != NULL, "One-hot matrix cannot be NULL");
+    
+    int num_samples = one_hot->rows;
+    int num_classes = one_hot->cols;
+    Matrix* labels = create_matrix(num_samples, 1);
+    
+    for (int i = 0; i < num_samples; i++) {
+        int max_index = 0;
+        double max_value = one_hot->data[i][0];
+        
+        for (int j = 1; j < num_classes; j++) {
+            if (one_hot->data[i][j] > max_value) {
+                max_value = one_hot->data[i][j];
+                max_index = j;
+            }
+        }
+        
+        labels->data[i][0] = (double)max_index;
+    }
+    
+    return labels;
+}
+
+// Normalize matrix to [0, 1] range
+Matrix* normalize_matrix(Matrix *X) {
+    CSV_CHECK(X != NULL, "Matrix cannot be NULL");
+    
+    Matrix* normalized = copy_matrix(X);
+    
+    for (int j = 0; j < normalized->cols; j++) {
+        // Find min and max for column j
+        double min_val = INFINITY;
+        double max_val = -INFINITY;
+        int valid_count = 0;
+        
+        for (int i = 0; i < normalized->rows; i++) {
+            if (!isnan(normalized->data[i][j])) {
+                if (normalized->data[i][j] < min_val) min_val = normalized->data[i][j];
+                if (normalized->data[i][j] > max_val) max_val = normalized->data[i][j];
+                valid_count++;
+            }
+        }
+        
+        if (valid_count > 0 && max_val > min_val) {
+            // Normalize: (x - min) / (max - min)
+            for (int i = 0; i < normalized->rows; i++) {
+                if (!isnan(normalized->data[i][j])) {
+                    normalized->data[i][j] = (normalized->data[i][j] - min_val) / (max_val - min_val);
+                }
+            }
+        }
+    }
+    
+    return normalized;
+}
+
+// Standardize matrix to mean=0, std=1
+Matrix* standardize_matrix(Matrix *X) {
+    CSV_CHECK(X != NULL, "Matrix cannot be NULL");
+    
+    Matrix* standardized = copy_matrix(X);
+    
+    for (int j = 0; j < standardized->cols; j++) {
+        // Calculate mean for column j
+        double sum = 0.0;
+        int valid_count = 0;
+        
+        for (int i = 0; i < standardized->rows; i++) {
+            if (!isnan(standardized->data[i][j])) {
+                sum += standardized->data[i][j];
+                valid_count++;
+            }
+        }
+        
+        if (valid_count > 0) {
+            double mean = sum / valid_count;
+            
+            // Calculate standard deviation
+            double variance = 0.0;
+            for (int i = 0; i < standardized->rows; i++) {
+                if (!isnan(standardized->data[i][j])) {
+                    double diff = standardized->data[i][j] - mean;
+                    variance += diff * diff;
+                }
+            }
+            double std_dev = sqrt(variance / valid_count);
+            
+            if (std_dev > 1e-10) {  // Avoid division by zero
+                // Standardize: (x - mean) / std_dev
+                for (int i = 0; i < standardized->rows; i++) {
+                    if (!isnan(standardized->data[i][j])) {
+                        standardized->data[i][j] = (standardized->data[i][j] - mean) / std_dev;
+                    }
+                }
+            }
+        }
+    }
+    
+    return standardized;
+}
+
+// Shuffle dataset (X and y together)
+void shuffle_dataset(Matrix *X, Matrix *y) {
+    CSV_CHECK(X != NULL, "X matrix cannot be NULL");
+    CSV_CHECK(y != NULL, "y matrix cannot be NULL");
+    CSV_CHECK(X->rows == y->rows, "X and y must have same number of samples");
+    
+    int num_samples = X->rows;
+    
+    // Create temporary storage for one sample
+    double* temp_X = (double*)malloc(X->cols * sizeof(double));
+    double temp_y = 0.0;
+    
+    // Fisher-Yates shuffle
+    srand(time(NULL));
+    for (int i = num_samples - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        
+        // Swap X samples
+        memcpy(temp_X, X->data[i], X->cols * sizeof(double));
+        memcpy(X->data[i], X->data[j], X->cols * sizeof(double));
+        memcpy(X->data[j], temp_X, X->cols * sizeof(double));
+        
+        // Swap y samples
+        temp_y = y->data[i][0];
+        y->data[i][0] = y->data[j][0];
+        y->data[j][0] = temp_y;
+    }
+    
+    free(temp_X);
+}
