@@ -37,4 +37,11 @@ double evaluate(SequentialModel* model, const Matrix* X, const Matrix* y);
 // Utility functions
 void print_model_summary(const SequentialModel* model);
 
+
+// BUILT-IN SAVE/LOAD FUNCTIONS
+void save_model(SequentialModel* model, const char* filename);
+SequentialModel* load_model(const char* filename);
+void save_weights(SequentialModel* model, const char* filename);
+void load_weights(SequentialModel* model, const char* filename);
+
 #endif
