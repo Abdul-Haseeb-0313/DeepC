@@ -269,7 +269,6 @@ Matrix* multiply(const Matrix *a, const Matrix *b) {
     return result;
 }
 
-// In matrix.c - REPLACE the dot product function with this:
 Matrix* dot(const Matrix *a, const Matrix *b) {
     if (!a || !b) {
         printf("ERROR: One or both matrices are NULL in dot product\n");
@@ -418,7 +417,6 @@ int matrix_has_nan(const Matrix* m) {
     return 0;
 }
 
-// Add these functions to matrix.c
 
 // Extract features from dataset (exclude label column)
 Matrix* get_features(const Matrix* data_with_labels, int label_column) {
