@@ -176,7 +176,7 @@ Matrix* predict(SequentialModel* model, const Matrix* input) {
 }
 
 // Train the model
-// In models.c - REPLACE the fit function with this simplified version:
+
 void fit(SequentialModel* model, const Matrix* X, const Matrix* y, 
          int epochs, int batch_size, int verbose) {
     if (!model || !X || !y) {
