@@ -50,7 +50,6 @@ void free_layer(Layer* layer);
 // Utility
 int matrix_has_nan(const Matrix* m);
 
-// Add these function declarations at the end of layers.h
 
 // Layer serialization
 void save_layer(Layer* layer, FILE* file);
