@@ -9,7 +9,7 @@ git clone https://github.com/yourusername/DeepC.git
 ```
 ## Usage
 ```c
-#include <DeepC.h>
+#include "DeepC.h"
 
 int main() {
     SequentialModel* model = create_model("MyModel");
