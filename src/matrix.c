@@ -1,4 +1,4 @@
-#include "matrix.h"
+#include "deepc/matrix.h"
 
 // Stack trace function
 void print_stack_trace(void) {

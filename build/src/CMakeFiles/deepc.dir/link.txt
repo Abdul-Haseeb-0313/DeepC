@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdeepc.a CMakeFiles/deepc.dir/data_processing.c.o CMakeFiles/deepc.dir/losses.c.o CMakeFiles/deepc.dir/models.c.o CMakeFiles/deepc.dir/layers.c.o CMakeFiles/deepc.dir/matrix.c.o CMakeFiles/deepc.dir/optimizers.c.o
+/usr/bin/ranlib libdeepc.a

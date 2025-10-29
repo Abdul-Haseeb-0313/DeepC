@@ -1,0 +1,8 @@
+/home/francespos/Documents/cpp/DeepC/build/CMakeFiles/edit_cache.dir
+/home/francespos/Documents/cpp/DeepC/build/CMakeFiles/rebuild_cache.dir
+/home/francespos/Documents/cpp/DeepC/build/src/CMakeFiles/deepc.dir
+/home/francespos/Documents/cpp/DeepC/build/src/CMakeFiles/edit_cache.dir
+/home/francespos/Documents/cpp/DeepC/build/src/CMakeFiles/rebuild_cache.dir
+/home/francespos/Documents/cpp/DeepC/build/test/CMakeFiles/test.dir
+/home/francespos/Documents/cpp/DeepC/build/test/CMakeFiles/edit_cache.dir
+/home/francespos/Documents/cpp/DeepC/build/test/CMakeFiles/rebuild_cache.dir

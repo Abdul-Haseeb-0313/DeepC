@@ -1,0 +1,1 @@
+/usr/bin/cc -Wl,--dependency-file=CMakeFiles/test.dir/link.d CMakeFiles/test.dir/test.c.o -o /home/francespos/Documents/cpp/DeepC/bin/test  ../src/libdeepc.a -lm
