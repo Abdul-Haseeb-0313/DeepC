@@ -9,7 +9,7 @@ git clone https://github.com/yourusername/DeepC.git
 ```
 ## Usage
 ```c
-#include "DeepC.h"
+#include "deepc/DeepC.h"
 
 int main() {
     SequentialModel* model = create_model("MyModel");
@@ -24,10 +24,14 @@ int main() {
     return 0;
 }
 ```
-## Compile with:
+## Compile test with:
 ```bash
-gcc program.c src/*  -Iinclude -o program -lm
-./program
+mkdir build 
+cd build 
+cmake ..
+cmake --build .
+cd ..
+bin/test
 ```
 
 ## Features

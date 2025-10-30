@@ -1,4 +1,4 @@
-#include "losses.h"
+#include "deepc/losses.h"
 
 // Error handling
 #define LOSS_ERROR(msg) do { \
